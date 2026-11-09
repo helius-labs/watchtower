@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PROGRAMS } from '../src/constants.js';
-import { adminKeyBehavior } from '../src/detectors/adminKeyBehavior.js';
+import { adminKeyBehavior, startAdminKeyProfile } from '../src/detectors/adminKeyBehavior.js';
 import type { DetectorContext } from '../src/detectors/types.js';
+import type { ScanPlan } from '../src/targets.js';
 import { context, KEYS, tx, type IxSpec, type TxOptions } from './helpers.js';
 
 const ADMIN = 'Admin11111111111111111111111111111111111111';
@@ -19,6 +20,16 @@ let slot = 1;
 function run(ctx: DetectorContext, instructions: IxSpec[], options: TxOptions = { feePayer: ADMIN }) {
     return adminKeyBehavior.detect(tx(`sig-${slot}`, slot++, instructions, options), ctx);
 }
+
+const DAY = 86_400;
+const START = 1_790_000_000;
+
+/** A call by the admin, paying its own fee, `days` after `START`. */
+function callOn(ctx: DetectorContext, days: number) {
+    return adminKeyBehavior.detect({ ...tx(`sig-${slot}`, slot++, [tagged(9)], { feePayer: ADMIN }), blockTime: START + days * DAY }, ctx);
+}
+
+const adminPlan = { detectors: ['admin-key-behavior'], subject: KEYS.program, address: ADMIN } as ScanPlan;
 
 /** An undecoded call whose first data byte is its instruction tag, as on Raydium AMM v4. */
 const tagged = (tag: number): IxSpec => ({
@@ -92,5 +103,41 @@ describe('admin-key-behavior', () => {
         for (let i = 0; i < BASELINE; i++) run(ctx, [pay(ADMIN), tagged(9)]);
         const referenced: IxSpec = { programId: KEYS.program, name: 'swap', accounts: [['admin', ADMIN, false]] };
         expect(run(ctx, [flashLoan, referenced], { feePayer: KEYS.attacker })).toEqual([]);
+    });
+
+    describe('cold keys', () => {
+        it('flags the first signed call of a key watched for weeks without one', () => {
+            const ctx = setup();
+            startAdminKeyProfile(ctx.state, adminPlan, START);
+            const [finding] = callOn(ctx, 90);
+            expect(finding).toMatchObject({ severity: 'high', title: 'Admin key used in an unfamiliar way', stages: ['control'] });
+            expect(finding!.description).toContain('was its first signed call in the 90 days Watchtower has watched it');
+        });
+
+        it('flags a call after a quiet spell much longer than any before it, even below the baseline', () => {
+            const ctx = setup();
+            for (let day = 0; day < 4; day++) expect(callOn(ctx, day * 2)).toEqual([]);
+            const [finding] = callOn(ctx, 6 + 25);
+            expect(finding!.description).toContain(
+                'came 25 days after its previous signed call, when its longest quiet spell before was 2 days',
+            );
+            expect(callOn(ctx, 32)).toEqual([]);
+        });
+
+        it('leaves a key alone when the gap is short or fits its usual rhythm', () => {
+            const ctx = setup();
+            startAdminKeyProfile(ctx.state, adminPlan, START);
+            expect(callOn(ctx, 5)).toEqual([]);
+            for (const day of [35, 65]) callOn(ctx, day);
+            expect(callOn(ctx, 100)).toEqual([]);
+        });
+
+        it('starts a profile only for admin key plans that have none', () => {
+            const ctx = setup();
+            startAdminKeyProfile(ctx.state, { ...adminPlan, detectors: ['privileged-instruction'] }, START);
+            expect(callOn(ctx, 90)).toEqual([]);
+            startAdminKeyProfile(ctx.state, adminPlan, START - 400 * DAY);
+            expect(callOn(ctx, 91)).toEqual([]);
+        });
     });
 });

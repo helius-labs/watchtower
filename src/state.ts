@@ -48,7 +48,13 @@ export interface AdminKeyProfile {
     parties: string[];
     /** Other programs called in the same transactions. */
     programs: string[];
+    /** Unix seconds of the last signed call, or of when watching began before any. May be absent in older state files. */
+    lastSeen?: number;
+    /** Longest time between two signed calls, in seconds. */
+    longestGap?: number;
 }
+
+type ProfileEntries = Pick<AdminKeyProfile, 'instructions' | 'parties' | 'programs'>;
 
 export interface ChainSignal {
     stage: AttackStage;
@@ -293,10 +299,16 @@ export class StateStore {
      * Adds one transaction to the profile at `key` and returns the profile as it was before it, or `undefined` for the
      * first. Each list keeps its first `MAX_PROFILE_ENTRIES` entries, so later additions stay reported as new.
      */
-    recordAdminKeyUse(key: string, use: Omit<AdminKeyProfile, 'transactions'>): AdminKeyProfile | undefined {
+    recordAdminKeyUse(key: string, use: ProfileEntries, time: number): AdminKeyProfile | undefined {
         const current = this.#state.adminKeyProfiles[key];
         const before = current && structuredClone(current);
-        const profile = current ?? { transactions: 0, instructions: [], parties: [], programs: [] };
+        const profile: AdminKeyProfile = current ?? { transactions: 0, instructions: [], parties: [], programs: [] };
+        if (profile.lastSeen === undefined || time > profile.lastSeen) {
+            if (profile.transactions > 0 && profile.lastSeen !== undefined) {
+                profile.longestGap = Math.max(profile.longestGap ?? 0, time - profile.lastSeen);
+            }
+            profile.lastSeen = time;
+        }
         profile.transactions++;
         for (const field of ['instructions', 'parties', 'programs'] as const) {
             for (const entry of use[field]) {
@@ -306,6 +318,13 @@ export class StateStore {
         this.#state.adminKeyProfiles[key] = profile;
         this.#dirty = true;
         return before;
+    }
+
+    /** Starts an empty profile at `key` watched since `since` (unix seconds), unless one exists. */
+    startAdminKeyProfile(key: string, since: number): void {
+        if (this.#state.adminKeyProfiles[key]) return;
+        this.#state.adminKeyProfiles[key] = { transactions: 0, instructions: [], parties: [], programs: [], lastSeen: since };
+        this.#dirty = true;
     }
 
     knownSigners(key: string): readonly string[] {

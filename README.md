@@ -49,22 +49,22 @@ Prefer the terminal? The [CLI guide](docs/cli.md) walks through `init`, `report`
 
 ## What it detects
 
-| Detector                 | Alerts on                                                                                      |
-| ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `program-deployment`     | Upgrades, upgrade-authority transfers, programs made immutable or closed                       |
-| `upgrade-proposal`       | An upgrade or authority change proposed in the program's multisig, before it can execute       |
-| `multisig-proposal`      | Every other proposal on a watched multisig, decoded; critical when signed with a durable nonce |
-| `multisig-change`        | Members, threshold, time lock and spending-limit changes                                       |
-| `mint-authority`         | Mint, freeze and Token-2022 authority and extension changes; large mints                       |
-| `privileged-instruction` | Admin calls, classified by what they change; risky new listings; unknown signers               |
-| `admin-key-behavior`     | A known admin key used unlike its history: new instruction, fee payer, program or a flash loan |
-| `treasury-outflow`       | Large or sustained outflows and multi-asset sweeps from treasuries and vaults                  |
-| `key-authority`          | Stake, token-account and delegate authority handed off by a watched key                        |
-| `nonce-authority`        | A durable nonce account set up for a privileged key                                            |
-| `idl-change`             | A newly published IDL, with instructions added and removed                                     |
-| `config-change`          | Changed fields in config accounts; any admin key change is critical                            |
-| `build-verification`     | An upgrade whose bytecode does not match a verified build                                      |
-| `attack-chain`           | One critical alert when control, risk and drain stages of a takeover line up within 24 hours   |
+| Detector                 | Alerts on                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `program-deployment`     | Upgrades, upgrade-authority transfers, programs made immutable or closed                                                  |
+| `upgrade-proposal`       | An upgrade or authority change proposed in the program's multisig, before it can execute                                  |
+| `multisig-proposal`      | Every other proposal on a watched multisig, decoded; critical when signed with a durable nonce                            |
+| `multisig-change`        | Members, threshold, time lock and spending-limit changes                                                                  |
+| `mint-authority`         | Mint, freeze and Token-2022 authority and extension changes; large mints                                                  |
+| `privileged-instruction` | Admin calls, classified by what they change; risky new listings; unknown signers                                          |
+| `admin-key-behavior`     | A known admin key used unlike its history: after a long silence, a new instruction, fee payer or program, or a flash loan |
+| `treasury-outflow`       | Large or sustained outflows and multi-asset sweeps from treasuries and vaults                                             |
+| `key-authority`          | Stake, token-account and delegate authority handed off by a watched key                                                   |
+| `nonce-authority`        | A durable nonce account set up for a privileged key                                                                       |
+| `idl-change`             | A newly published IDL, with instructions added and removed                                                                |
+| `config-change`          | Changed fields in config accounts; any admin key change is critical                                                       |
+| `build-verification`     | An upgrade whose bytecode does not match a verified build                                                                 |
+| `attack-chain`           | One critical alert when control, risk and drain stages of a takeover line up within 24 hours                              |
 
 The [detector guide](docs/detectors.md) has the full rules and severities.
 

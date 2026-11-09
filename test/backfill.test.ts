@@ -200,6 +200,27 @@ describe('backfill', () => {
         expect(seen).toEqual(['older', 'newer']);
     });
 
+    it("starts an admin key's profile where its first scan's coverage begins", async () => {
+        const keyPlan: ScanPlan = {
+            ...plan,
+            key: `adminkey:${KEYS.program}:${KEYS.member}`,
+            address: KEYS.member,
+            detectors: ['admin-key-behavior'],
+        };
+        const lastSeen = (ctx: ReturnType<typeof context>) =>
+            ctx.state.recordAdminKeyUse(`${KEYS.program}:${KEYS.member}`, { instructions: [], parties: [], programs: [] }, 0)?.lastSeen;
+
+        const full = context();
+        const page = { results: [], progress: { windowEnded: true } };
+        await backfill(config, fakeEvents(page), new Engine(full, []), full.state, [keyPlan], 1_000, { alertMode: 'send' });
+        expect(lastSeen(full)).toBeCloseTo(Date.now() / 1000 - 30 * 86_400, -2);
+
+        const partial = context();
+        const cut = { results: [], progress: { windowEnded: false, scannedThrough: { slot: 900, blockTime: 1_790_000_000 } } };
+        await backfill(config, fakeEvents(cut), new Engine(partial, []), partial.state, [keyPlan], 1_000, { alertMode: 'send' });
+        expect(lastSeen(partial)).toBe(1_790_000_000);
+    });
+
     it('reports a failed plan and keeps scanning the rest', async () => {
         const ctx = context();
         const other: ScanPlan = { ...plan, key: 'multisig:x', detectors: ['multisig-change'], subject: KEYS.multisig };

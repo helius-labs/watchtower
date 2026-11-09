@@ -1,14 +1,17 @@
 import { getBase58Encoder } from '@solana/kit';
 import type { Severity } from '../config.js';
 import { PROGRAMS } from '../constants.js';
-import { short } from '../format.js';
+import { humanDuration, short } from '../format.js';
 import { normalizeName, type ParsedInstruction, type ParsedTx } from '../model.js';
-import type { AdminKeyProfile } from '../state.js';
+import type { AdminKeyProfile, StateStore } from '../state.js';
+import type { ScanPlan } from '../targets.js';
 import { txFinding, type Detector, type DetectorContext, type Finding, type WatchedProgram } from './types.js';
 
 const ID = 'admin-key-behavior';
-/** Transactions a profile needs before departures from it are reported. */
+/** Transactions a profile needs before departures from it are reported. Dormancy needs none. */
 const MIN_BASELINE_TRANSACTIONS = 10;
+const DORMANT_SECONDS = 21 * 86_400;
+const DORMANT_GAP_MULTIPLE = 3;
 /** Programs found in transactions of every kind, so they say nothing about who built one. */
 const COMMON_PROGRAMS = new Set<string>([
     PROGRAMS.system,
@@ -30,7 +33,7 @@ interface Signal {
 export const adminKeyBehavior: Detector = {
     id: ID,
     description:
-        "A known admin key used in a way its own history doesn't show: a new instruction, a flash loan, a new fee payer or co-signer, or a new program alongside",
+        "A known admin key used in a way its own history doesn't show: after a long quiet spell, a new instruction, a flash loan, a new fee payer or co-signer, or a new program alongside",
     detect(tx: ParsedTx, ctx: DetectorContext): Finding[] {
         const findings: Finding[] = [];
         const signed = transactionSigners(tx);
@@ -46,14 +49,40 @@ export const adminKeyBehavior: Detector = {
                         (p) => p !== program.id && !COMMON_PROGRAMS.has(p),
                     ),
                 };
-                const before = ctx.state.recordAdminKeyUse(`${program.id}:${key}`, use);
-                const signals = [...departures(key, use, before, tx), ...flashLoans(tx, before)];
+                const time = tx.blockTime ?? Math.floor(Date.now() / 1000);
+                const before = ctx.state.recordAdminKeyUse(profileKey(program.id, key), use, time);
+                const signals = [...dormancy(before, time), ...departures(key, use, before, tx), ...flashLoans(tx, before)];
                 if (signals.length > 0) findings.push(finding(tx, program, key, signals));
             }
         }
         return findings;
     },
 };
+
+function profileKey(programId: string, key: string): string {
+    return `${programId}:${key}`;
+}
+
+/**
+ * Starts the profile of `plan`'s admin key as watched since `since` (unix seconds), so its first signed call after a
+ * long quiet spell counts as dormant even when the scan found none before it.
+ */
+export function startAdminKeyProfile(state: StateStore, plan: ScanPlan, since: number): void {
+    if (plan.detectors.includes(ID)) state.startAdminKeyProfile(profileKey(plan.subject, plan.address), since);
+}
+
+/** A first signed call after at least `DORMANT_SECONDS`, and at least `DORMANT_GAP_MULTIPLE` times its longest earlier quiet spell. */
+function dormancy(before: AdminKeyProfile | undefined, time: number): Signal[] {
+    if (before?.lastSeen === undefined) return [];
+    const gap = time - before.lastSeen;
+    const longest = before.longestGap ?? 0;
+    if (gap < Math.max(DORMANT_SECONDS, DORMANT_GAP_MULTIPLE * longest)) return [];
+    const text =
+        before.transactions === 0
+            ? `was its first signed call in the ${humanDuration(gap)} Watchtower has watched it`
+            : `came ${humanDuration(gap)} after its previous signed call${longest > 0 ? `, when its longest quiet spell before was ${humanDuration(longest)}` : ''}`;
+    return [{ strong: true, text }];
+}
 
 /**
  * The fee payer and signers of decoded top-level instructions. Inner instructions also mark PDAs that sign through CPI,
@@ -89,7 +118,12 @@ export function instructionKey(ix: ParsedInstruction, program: WatchedProgram): 
     return `#${data[0] ?? '?'}`;
 }
 
-function departures(key: string, use: Omit<AdminKeyProfile, 'transactions'>, before: AdminKeyProfile | undefined, tx: ParsedTx): Signal[] {
+function departures(
+    key: string,
+    use: Pick<AdminKeyProfile, 'instructions' | 'parties' | 'programs'>,
+    before: AdminKeyProfile | undefined,
+    tx: ParsedTx,
+): Signal[] {
     if (!before || before.transactions < MIN_BASELINE_TRANSACTIONS) return [];
     const newInstructions = use.instructions.filter((i) => !before.instructions.includes(i));
     const newParties = use.parties.filter((p) => !before.parties.includes(p));

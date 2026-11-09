@@ -82,6 +82,11 @@ export class RpcClient {
         return b.slot;
     }
 
+    /** Unix seconds of `slot`, or of the first produced slot after it when it was skipped. */
+    async getBlockTime(slot: number): Promise<number> {
+        return (await this.#timedSlot(slot)).time;
+    }
+
     /** The first produced slot at or after `slot`, with its block time. */
     async #timedSlot(slot: number): Promise<{ slot: number; time: number }> {
         for (let s = slot; ; s++) {

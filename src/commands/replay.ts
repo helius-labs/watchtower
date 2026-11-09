@@ -14,6 +14,7 @@ import {
     type Severity,
 } from '../config.js';
 import { CONFIG_CHANGE_ID } from '../configWatch.js';
+import { startAdminKeyProfile } from '../detectors/adminKeyBehavior.js';
 import { ATTACK_CHAIN_ID } from '../detectors/attackChain.js';
 import { DETECTOR_IDS } from '../detectors/index.js';
 import type { Finding, WatchTargets } from '../detectors/types.js';
@@ -111,6 +112,10 @@ export async function replayCommand(options: ReplayOptions): Promise<void> {
             `${plan.label}: ${scanned.toLocaleString('en-US')} scanned${ended ? '' : pc.yellow(' (budget reached, window not finished)')}`,
         );
     }
+
+    // Scans read oldest-first, so even a budget-limited one covers the window from its start.
+    const windowStart = window.time?.gte ?? (await runtime.rpc.getBlockTime(idlAtSlot));
+    for (const { plan, outcome } of scans) if (outcome !== 'skipped') startAdminKeyProfile(runtime.state, plan, windowStart);
 
     const ordered = [...transactions.values()].sort((a, b) => a.slot - b.slot);
     const findings: Finding[] = [];

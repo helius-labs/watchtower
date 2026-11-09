@@ -1,4 +1,5 @@
 import type { Config } from './config.js';
+import { startAdminKeyProfile } from './detectors/adminKeyBehavior.js';
 import type { AlertMode, Engine } from './engine.js';
 import type { ParsedEventsClient, ScanProgress, ScanRequest } from './helius/parsedEvents.js';
 import { fromParsedEvents, type ParsedTx } from './model.js';
@@ -99,6 +100,11 @@ export async function backfill(
                 if (firstScan) newestFirst.push(tx);
                 else findings += (await engine.process(tx, alertMode)).length;
             }
+            if (firstScan) {
+                // A budget-limited first scan covers only back to where it stopped.
+                const since = progress.windowEnded ? lookbackStart(config) : progress.scannedThrough?.blockTime;
+                if (since) startAdminKeyProfile(state, plan, since);
+            }
             for (const tx of newestFirst.reverse()) findings += (await engine.process(tx, alertMode)).length;
         } catch (error) {
             finish(plan, progress, 'failed', findings, (error as Error).message);
@@ -118,13 +124,18 @@ export async function backfill(
     return results;
 }
 
+/** Unix seconds where a first scan's lookback window starts. */
+function lookbackStart(config: Config): number {
+    return Math.floor(Date.now() / 1000) - config.backfill.lookbackDays * 86_400;
+}
+
 function scanRequest(config: Config, plan: ScanPlan, state: StateStore, untilSlot: number) {
     const cursor = state.cursor(plan.key);
     const sortOrder = cursor ? 'asc' : 'desc';
     const window = cursor
         ? { slot: { gt: cursor.slot, lte: untilSlot } }
         : {
-              time: { gte: Math.floor(Date.now() / 1000) - config.backfill.lookbackDays * 86_400 },
+              time: { gte: lookbackStart(config) },
               slot: { lte: untilSlot },
           };
     return {
