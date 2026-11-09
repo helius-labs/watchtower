@@ -1,8 +1,8 @@
 name: Exploit replay
 
-# Replays the Drift exploit window against live Parsed Events every Monday and fails if Watchtower stops raising its
-# critical alerts on the new admin's first transaction. Catches regressions in Watchtower and changes in the APIs.
-# Needs a HELIUS_API_KEY repository secret; a run costs about 35 Parsed Events credits.
+# Replays the Drift, Raydium and Pump.fun exploit windows against live Parsed Events every Monday and fails if Watchtower
+# stops raising its critical alerts on each attack's first transaction (scripts/check-replays.mjs). Catches regressions
+# in Watchtower and changes in the APIs. Needs a HELIUS_API_KEY repository secret; a run costs about 190 credits.
 
 on:
   schedule:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  drift:
+  replays:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -31,7 +31,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Replay the Drift exploit window
+      - name: Replay the exploit windows
         env:
           HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
         run: |
@@ -39,7 +39,7 @@ jobs:
             echo "::error::Add a HELIUS_API_KEY repository secret to run the exploit replay."
             exit 1
           fi
-          pnpm replay:drift
+          pnpm replay:check
       # One open issue tracks a failing replay; later failures comment on it instead of opening more.
       - name: Report the failure in an issue
         if: failure() && github.event_name == 'schedule'
@@ -52,7 +52,7 @@ jobs:
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "Still failing: $RUN_URL"
           else
-            gh issue create --title "$title" --body "The weekly Drift exploit replay failed: $RUN_URL
+            gh issue create --title "$title" --body "The weekly exploit replay failed: $RUN_URL
 
-          It replays 2026-03-20 to 2026-04-02 and expects the critical **Possible attack in progress** alert on the new admin's first transaction. A failure means detection regressed, the Parsed Events API changed, or the run could not reach Helius. Run \`pnpm replay:drift\` locally to reproduce."
+          It replays the Drift (2026), Raydium (2022) and Pump.fun (2024) exploit windows and expects a critical alert on each attack's first transaction. The run log ends with what is missing. A failure means detection regressed, the Parsed Events API changed, or the run could not reach Helius. Run \`pnpm replay:check\` locally to reproduce."
           fi

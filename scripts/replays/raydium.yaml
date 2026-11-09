@@ -1,0 +1,6 @@
+# Raydium AMM v4 exploit of 2022-12-16, for `pnpm replay:check raydium`. AMM v4 is a native program with no IDL,
+# so its owner key is listed here. The exploit transactions are listed in github.com/raydium-io/dec_16_exploit.
+programs:
+  - id: 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
+    name: Raydium AMM v4
+    adminKeys: [HggGrUeg4ReGvpPMLJMFKV69NTXL1r4wQ9Pk9Ljutwyv]

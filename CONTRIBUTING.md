@@ -18,7 +18,7 @@ The tests run offline and never spend API credits.
 
 - Run `pnpm check`. CI runs the same steps.
 - CI also scans each push and pull request for secrets (Gitleaks) and audits workflow changes (zizmor). Pin any third-party GitHub Action to a full commit SHA with its version as a comment; `actions/*` may use a version tag.
-- If you changed detectors, discovery or the Helius adapters, also run `pnpm replay:drift`. It replays the Drift exploit against mainnet with your API key (about 35 credits) and checks Watchtower still raises its critical alert on the attacker's first admin transaction. A weekly workflow runs the same check.
+- If you changed detectors, discovery or the Helius adapters, also run `pnpm replay:check`. It replays the Drift, Raydium and Pump.fun exploits against mainnet with your API key (about 190 credits) and checks Watchtower still raises a critical alert on each attack's first transaction. `pnpm replay:check raydium` runs one case. A weekly workflow runs the same check.
 - `pnpm format` fixes formatting; `pnpm lint` runs oxlint.
 - Read [`AGENTS.md`](AGENTS.md). It covers the layout, the conventions (naming, comments, how detectors read decoded instructions) and the invariants that keep alerts complete, such as when a cursor may move.
 - Add tests for new behavior. Detectors are tested with the helpers in [`test/helpers.ts`](test/helpers.ts), which build transactions in the Parsed Streams wire shape. When you change an account decoder, add a fixture from a real mainnet account.

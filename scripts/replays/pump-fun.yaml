@@ -1,0 +1,6 @@
+# Pump.fun exploit of 2024-05-16, for `pnpm replay:check pump-fun`. The withdraw authority of that time, which the
+# exploiter used with marginfi flash loans, is listed here; discovery only finds today's admins.
+programs:
+  - id: 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+    name: Pump.fun
+    adminKeys: [5PXxuZkvftsg5CAGjv5LL5tEtvBRskdx1AAjxw8hK2Qx]

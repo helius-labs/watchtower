@@ -44,7 +44,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "replay:drift": "tsx src/cli.ts replay --program dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH:Drift --from 2026-03-20 --to 2026-04-02 --no-program-scans --json reports/drift-replay.json && node scripts/check-drift-replay.mjs reports/drift-replay.json",
+    "replay:check": "node scripts/check-replays.mjs",
     "prepublishOnly": "pnpm check"
   },
   "packageManager": "pnpm@10.26.0",
