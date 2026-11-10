@@ -32,7 +32,7 @@ describe('posture', () => {
                 programs: [program({ idl: { instructions: [], privileged: ['set_admin'] } as never })],
                 mints: [],
                 multisigs: [],
-                seizable: [],
+                tokenAccounts: [],
             },
             chain,
         );
@@ -66,7 +66,7 @@ describe('posture', () => {
                     },
                 ],
                 multisigs: [],
-                seizable: [],
+                tokenAccounts: [],
             },
             chain,
         );

@@ -6,7 +6,6 @@ import type { FungibleHolding, RpcClient } from '../helius/rpc.js';
 import { account, fromParsedEvents, normalizeName } from '../model.js';
 import { checkBuild, type BuildCheck } from './build.js';
 import { isAdminRole, namesType, PRIMITIVE_SIZE, summarizeIdl, type ConfigLayout, type IdlSummary } from './idl.js';
-import type { SeizableAccount } from '../detectors/types.js';
 import { mintControls, permanentDelegateOf, type MintControl } from './token2022.js';
 import { decodeMultisig, findVaultIndex, type SquadsMultisig } from './squads.js';
 
@@ -48,6 +47,17 @@ export interface Vault {
     authority: string;
     usd: number;
     holdings: FungibleHolding[];
+}
+
+export interface OwnedTokenAccount {
+    address: string;
+    /** The treasury or vault that owns it. */
+    owner: string;
+    mint: string;
+    /** Approved with `approve` and with a nonzero allowance. */
+    delegate: string | null;
+    /** Token-2022 only, and never the owner itself. */
+    permanentDelegate: string | null;
 }
 
 export interface MintState {
@@ -432,26 +442,30 @@ export async function discoverMint(rpc: RpcClient, mint: string): Promise<MintSt
 
 const MAX_ACCOUNTS_PER_CALL = 100;
 
-/** The owners' Token-2022 accounts whose mint has a permanent delegate other than the owner. */
-export async function discoverSeizableAccounts(rpc: RpcClient, owners: string[]): Promise<SeizableAccount[]> {
+/** The owners' SPL Token and Token-2022 accounts, with who else can move their tokens. */
+export async function discoverTokenAccounts(rpc: RpcClient, owners: string[]): Promise<OwnedTokenAccount[]> {
     const accounts = (
         await Promise.all(
-            owners.map(async (owner) => (await rpc.getTokenAccounts(owner, PROGRAMS.token2022)).map((a) => ({ ...a, owner }))),
+            owners.flatMap((owner) =>
+                [PROGRAMS.splToken, PROGRAMS.token2022].map(async (program) =>
+                    (await rpc.getTokenAccounts(owner, program)).map((a) => ({ ...a, owner, program })),
+                ),
+            ),
         )
     ).flat();
-    const mints = [...new Set(accounts.map((a) => a.mint))];
-    const delegates = new Map<string, string>();
+    const mints = [...new Set(accounts.filter((a) => a.program === PROGRAMS.token2022).map((a) => a.mint))];
+    const permanentDelegates = new Map<string, string>();
     for (let i = 0; i < mints.length; i += MAX_ACCOUNTS_PER_CALL) {
         const group = mints.slice(i, i + MAX_ACCOUNTS_PER_CALL);
         const { data } = await rpc.getMultipleAccountsData(group);
         group.forEach((mint, j) => {
             const delegate = data[j] ? permanentDelegateOf(data[j]) : null;
-            if (delegate) delegates.set(mint, delegate);
+            if (delegate) permanentDelegates.set(mint, delegate);
         });
     }
-    return accounts.flatMap((a) => {
-        const delegate = delegates.get(a.mint);
-        return delegate && delegate !== a.owner ? [{ tokenAccount: a.address, mint: a.mint, delegate, owner: a.owner }] : [];
+    return accounts.map(({ address, owner, mint, delegate }) => {
+        const permanentDelegate = permanentDelegates.get(mint) ?? null;
+        return { address, owner, mint, delegate, permanentDelegate: permanentDelegate === owner ? null : permanentDelegate };
     });
 }
 

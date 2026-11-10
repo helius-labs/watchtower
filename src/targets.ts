@@ -2,8 +2,8 @@ import type { Config } from './config.js';
 import { FALLBACK_SLOT_MS, PROGRAMS, SQUADS_PROGRAMS } from './constants.js';
 import { MINT_EXTENSION_UPDATES } from './detectors/mintAuthority.js';
 import { DELEGATE_MOVES } from './detectors/permanentDelegate.js';
-import type { SeizableAccount, WatchedMultisig, WatchedTreasury, WatchTargets } from './detectors/types.js';
-import type { MintState, ProgramState, Vault } from './discover/index.js';
+import type { WatchedMultisig, WatchedTreasury, WatchTargets } from './detectors/types.js';
+import type { MintState, OwnedTokenAccount, ProgramState, Vault } from './discover/index.js';
 import type { SquadsMultisig } from './discover/squads.js';
 import { formatAmount, short } from './format.js';
 import type { ScanMatch } from 'helius-sdk/parsedEvents/types';
@@ -18,7 +18,7 @@ export interface Discovery {
     /** Multisigs listed in config, beyond those discovered as upgrade authorities. */
     multisigs: SquadsMultisig[];
     /** Token accounts of treasuries and discovered vaults. */
-    seizable: SeizableAccount[];
+    tokenAccounts: OwnedTokenAccount[];
 }
 
 export interface ScanPlan {
@@ -43,6 +43,12 @@ const SCAN_MAX_MINTS = 20;
 
 /** The native-SOL pseudo-mint the scan endpoint matches on lamport changes (wrapped SOL ends in …112). */
 const NATIVE_SOL_SCAN_MINT = 'So11111111111111111111111111111111111111111';
+
+/** Token tags a delegate can move tokens with: transfer, transfer_checked, and Token-2022's transfer_checked_with_fee. */
+const DELEGATE_TRANSFER_DISCRIMINATORS = {
+    [PROGRAMS.splToken]: ['0x03', '0x0c'],
+    [PROGRAMS.token2022]: ['0x03', '0x0c', '0x1a01'],
+};
 
 /** SPL Token and Token-2022 tags: set_authority, mint_to, freeze_account, mint_to_checked. */
 const TOKEN_DISCRIMINATORS = ['0x06', '0x07', '0x0a', '0x0e'];
@@ -171,6 +177,8 @@ export function buildTargets(config: Config, discovery: Discovery, state?: State
             windowSlots: windowSlots(treasury.windowMinutes),
             allowedDestinations: new Set(treasury.allowedDestinations),
             discovered: false,
+            tokenAccounts: new Set(),
+            delegates: new Map(),
         });
         targets.groups.set(treasury.address, treasury.address);
         targets.custodyKeys.set(treasury.address, { address: treasury.address, label, subject: treasury.address, subjectLabel: label });
@@ -182,8 +190,19 @@ export function buildTargets(config: Config, discovery: Discovery, state?: State
         if (!targets.custodyKeys.has(key.address))
             targets.custodyKeys.set(key.address, { address: key.address, label, subject: key.address, subjectLabel: label });
     }
-    for (const account of discovery.seizable) {
-        if (targets.treasuries.has(account.owner)) targets.seizableAccounts.set(account.tokenAccount, account);
+    for (const account of discovery.tokenAccounts) {
+        const treasury = targets.treasuries.get(account.owner);
+        if (!treasury) continue;
+        treasury.tokenAccounts.add(account.address);
+        if (account.delegate) treasury.delegates.set(account.address, account.delegate);
+        if (account.permanentDelegate) {
+            targets.seizableAccounts.set(account.address, {
+                tokenAccount: account.address,
+                mint: account.mint,
+                delegate: account.permanentDelegate,
+                owner: account.owner,
+            });
+        }
     }
     return targets;
 }
@@ -215,6 +234,8 @@ function vaultTreasury(vault: Vault, label: string, windowSlots: number): Watche
         windowSlots,
         allowedDestinations: new Set(),
         discovered: true,
+        tokenAccounts: new Set(),
+        delegates: new Map(),
     };
 }
 
@@ -332,6 +353,24 @@ export function scanPlans(config: Config, targets: WatchTargets): ScanPlan[] {
                 ...(treasury.discovered ? { skipFirstScan: true as const } : {}),
             });
         });
+        for (const [tokenAccount, delegate] of treasury.delegates) {
+            plans.push({
+                key: `delegated:${tokenAccount}`,
+                label: `${treasury.label} token account ${short(tokenAccount)}, delegate ${short(delegate)}`,
+                address: tokenAccount,
+                match: {
+                    programs: Object.entries(DELEGATE_TRANSFER_DISCRIMINATORS).map(([programId, discriminators]) => ({
+                        programId,
+                        discriminators,
+                        scope: 'address' as const,
+                    })),
+                },
+                status: 'succeeded',
+                detectors: ['treasury-outflow'],
+                subject: treasury.address,
+                ...(treasury.discovered ? { skipFirstScan: true as const } : {}),
+            });
+        }
     }
     for (const [delegate, subject] of permanentDelegates(targets)) {
         plans.push({
@@ -396,7 +435,8 @@ export function subscriptions(config: Config, targets: WatchTargets): Subscripti
             filter: { programs: [PROGRAMS.splToken, PROGRAMS.token2022], instructionNames: mintInstructions, accounts: { include } },
         });
     }
-    for (const include of chunk([...targets.treasuries.keys()], STREAM_MAX_INCLUDED_ACCOUNTS)) {
+    const treasuryAccounts = [...targets.treasuries.values()].flatMap((t) => [t.address, ...t.delegates.keys()]);
+    for (const include of chunk(treasuryAccounts, STREAM_MAX_INCLUDED_ACCOUNTS)) {
         subs.push({ label: 'treasuries', filter: { accounts: { include } } });
     }
     for (const include of chunk([...permanentDelegates(targets).keys()], STREAM_MAX_INCLUDED_ACCOUNTS)) {

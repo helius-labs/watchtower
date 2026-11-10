@@ -19,6 +19,8 @@ export interface FungibleHolding {
 }
 
 const BASE64 = { encoding: 'base64', commitment: 'confirmed' } as const;
+/** Token account layout: mint 0, owner 32, amount 64, delegate `COption` 72 (key at 76), state 108, is_native 109, delegated amount 121. */
+const TOKEN_ACCOUNT_DELEGATED_AMOUNT_END = 129;
 /** Recent slots may not have a block time yet. */
 const SETTLED_SLOTS = 150;
 const MAX_SLOT_SEARCH_STEPS = 12;
@@ -155,17 +157,22 @@ export class RpcClient {
         };
     }
 
-    /** The owner's token accounts under one token program, with each account's mint. */
-    async getTokenAccounts(owner: string, tokenProgram: string): Promise<{ address: string; mint: string }[]> {
+    /** The owner's token accounts under one token program, with each account's mint and approved delegate. */
+    async getTokenAccounts(owner: string, tokenProgram: string): Promise<{ address: string; mint: string; delegate: string | null }[]> {
         const { value } = await this.#helius.getTokenAccountsByOwner(
             address(owner),
             { programId: address(tokenProgram) },
-            { ...BASE64, dataSlice: { offset: 0, length: 32 } },
+            { ...BASE64, dataSlice: { offset: 0, length: TOKEN_ACCOUNT_DELEGATED_AMOUNT_END } },
         );
-        return value.map((a) => ({
-            address: a.pubkey,
-            mint: getAddressDecoder().decode(Buffer.from(a.account.data[0] ?? '', 'base64')),
-        }));
+        return value.map((a) => {
+            const data = Buffer.from(a.account.data[0] ?? '', 'base64');
+            const delegated = data.readUInt32LE(72) === 1 && data.readBigUInt64LE(121) > 0n;
+            return {
+                address: a.pubkey,
+                mint: getAddressDecoder().decode(data.subarray(0, 32)),
+                delegate: delegated ? getAddressDecoder().decode(data.subarray(76, 108)) : null,
+            };
+        });
     }
 
     /** Balances of the mint's largest token accounts, as UI amounts. */

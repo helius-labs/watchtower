@@ -1,7 +1,7 @@
 import type { Config } from '../config.js';
-import type { PrivilegedKey, SeizableAccount } from '../detectors/types.js';
+import type { PrivilegedKey } from '../detectors/types.js';
 import type { BuildCheck } from '../discover/build.js';
-import type { MintState, ProgramState } from '../discover/index.js';
+import type { MintState, OwnedTokenAccount, ProgramState } from '../discover/index.js';
 import { votingMembers, type SquadsMultisig } from '../discover/squads.js';
 import { humanDuration, short } from '../format.js';
 import type { Discovery } from '../targets.js';
@@ -67,8 +67,8 @@ export function assessPosture(config: Config, discovery: Discovery, chain: Chain
             const governedBy = [program.programId, ...(program.multisig ? [program.multisig.address] : [])];
             return subject('program', program.programId, configured?.name ?? short(program.programId), [
                 ...programChecks(program, configured?.privilegedInstructions ?? [], chain),
-                ...seizableChecks(
-                    discovery.seizable,
+                ...delegateChecks(
+                    discovery.tokenAccounts,
                     program.vaults.map((v) => v.authority),
                 ),
                 ...nonceChecks(nonces, governedBy),
@@ -317,15 +317,29 @@ function nonceChecks(nonces: NonceExposure | undefined, subjects: string[]): Che
     ];
 }
 
-function seizableChecks(seizable: SeizableAccount[], vaults: string[]): CheckResult[] {
-    const held = seizable.filter((a) => vaults.includes(a.owner));
-    if (held.length === 0) return [];
+function delegateChecks(tokenAccounts: OwnedTokenAccount[], vaults: string[]): CheckResult[] {
+    const held = tokenAccounts.filter((a) => vaults.includes(a.owner));
+    const seizable = held.filter((a) => a.permanentDelegate);
+    const approved = held.filter((a) => a.delegate);
     return [
-        {
-            status: 'info',
-            title: 'Vaults hold tokens a permanent delegate can take',
-            detail: `${held.map((a) => `${short(a.delegate)} can move or burn ${short(a.mint)} from ${short(a.owner)}`).join('; ')}. Watchtower alerts when it does.`,
-        },
+        ...(seizable.length > 0
+            ? [
+                  {
+                      status: 'info' as const,
+                      title: 'Vaults hold tokens a permanent delegate can take',
+                      detail: `${seizable.map((a) => `${short(a.permanentDelegate!)} can move or burn ${short(a.mint)} from ${short(a.owner)}`).join('; ')}. Watchtower alerts when it does.`,
+                  },
+              ]
+            : []),
+        ...(approved.length > 0
+            ? [
+                  {
+                      status: 'info' as const,
+                      title: 'Vault token accounts have an approved delegate',
+                      detail: `${approved.map((a) => `${short(a.delegate!)} can move ${short(a.mint)} from ${short(a.address)}, owned by ${short(a.owner)}`).join('; ')}. Watchtower alerts on every transfer it signs.`,
+                  },
+              ]
+            : []),
     ];
 }
 

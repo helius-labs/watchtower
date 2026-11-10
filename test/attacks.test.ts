@@ -536,7 +536,7 @@ describe('verified builds', () => {
         const grade = (b: typeof build | null) =>
             assessPosture(
                 config,
-                { programs: [{ ...base, build: b }], mints: [], multisigs: [], seizable: [] },
+                { programs: [{ ...base, build: b }], mints: [], multisigs: [], tokenAccounts: [] },
                 { currentSlot: 10, slotMs: 400 },
             ).subjects[0]!.checks.find((c) => /build/i.test(c.title));
         expect(grade({ ...build, verified: true })).toMatchObject({ status: 'pass' });
@@ -588,7 +588,7 @@ describe('targets for admins, vaults and custody keys', () => {
     } satisfies Config;
 
     it('watches the admin multisig, the vault and the treasury key', () => {
-        const targets = buildTargets(config, { programs: [program], mints: [], multisigs: [], seizable: [] }, undefined, 400);
+        const targets = buildTargets(config, { programs: [program], mints: [], multisigs: [], tokenAccounts: [] }, undefined, 400);
         expect(targets.multisigs.get(KEYS.configTx)?.label).toBe('Drift admin multisig');
         expect(targets.groups.get(KEYS.configTx)).toBe(KEYS.program);
         expect(targets.treasuries.get(KEYS.nonce)).toMatchObject({
@@ -609,14 +609,16 @@ describe('targets for admins, vaults and custody keys', () => {
     it('skips vaults when watchVaults is off', () => {
         const off = { ...config, programs: config.programs.map((p) => ({ ...p, watchVaults: false })) };
         expect(
-            buildTargets(off, { programs: [program], mints: [], multisigs: [], seizable: [] }, undefined, 400).treasuries.has(KEYS.nonce),
+            buildTargets(off, { programs: [program], mints: [], multisigs: [], tokenAccounts: [] }, undefined, 400).treasuries.has(
+                KEYS.nonce,
+            ),
         ).toBe(false);
     });
 
     it('grades the admin multisig in posture', () => {
         const posture = assessPosture(
             config,
-            { programs: [program], mints: [], multisigs: [], seizable: [] },
+            { programs: [program], mints: [], multisigs: [], tokenAccounts: [] },
             { currentSlot: 10, slotMs: 400 },
         );
         const titles = posture.subjects[0]!.checks.map((c) => c.title);
@@ -626,7 +628,7 @@ describe('targets for admins, vaults and custody keys', () => {
         const wallet = { ...program, admins: [{ key: KEYS.member, role: 'admin', kind: 'wallet' as const, multisig: null }] };
         const graded = assessPosture(
             config,
-            { programs: [wallet], mints: [], multisigs: [], seizable: [] },
+            { programs: [wallet], mints: [], multisigs: [], tokenAccounts: [] },
             { currentSlot: 10, slotMs: 400 },
         );
         expect(graded.subjects[0]!.checks.find((c) => c.title === 'Admin key is a single wallet')).toMatchObject({

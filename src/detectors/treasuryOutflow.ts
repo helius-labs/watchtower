@@ -13,6 +13,8 @@ interface Outflow {
     amount: bigint;
     decimals: number;
     recipients: Set<string>;
+    /** Signers other than the treasury, by the token account they moved tokens out of. */
+    delegates: Map<string, string>;
 }
 
 export const treasuryOutflow: Detector = {
@@ -21,7 +23,7 @@ export const treasuryOutflow: Detector = {
     detect(tx: ParsedTx, ctx: DetectorContext): Finding[] {
         const findings: Finding[] = [];
         for (const treasury of ctx.targets.treasuries.values()) {
-            const outflows = outflowsFrom(tx, treasury.address);
+            const outflows = outflowsFrom(tx, treasury);
             for (const [mint, outflow] of outflows) {
                 findings.push(...judge(tx, ctx, treasury, mint, outflow));
                 const threshold = treasury.thresholds.get(mint);
@@ -64,6 +66,20 @@ function judge(tx: ParsedTx, ctx: DetectorContext, treasury: WatchedTreasury, mi
     };
     const base = { subject: treasury.address, subjectLabel: treasury.label };
     const findings: Finding[] = [];
+
+    const delegated = [...outflow.delegates].filter(([account, signer]) => ctx.targets.seizableAccounts.get(account)?.delegate !== signer);
+    if (delegated.length > 0) {
+        const signers = [...new Set(delegated.map(([, signer]) => signer))].join(', ');
+        findings.push(
+            txFinding(ID, tx, `${mint}:delegate`, {
+                ...base,
+                severity: 'high',
+                title: 'Outflow signed by a delegate',
+                description: `${amountText} left ${treasury.label} in a transfer signed by ${signers}, not by ${treasury.label}. A delegate approved on a token account can move tokens up to its allowance without the owner signing again.`,
+                details: { ...details, Delegate: signers, 'Token account': delegated.map(([account]) => account).join(', ') },
+            }),
+        );
+    }
 
     const unlisted = [...outflow.recipients].filter((r) => treasury.allowedDestinations.size > 0 && !treasury.allowedDestinations.has(r));
     if (unlisted.length > 0) {
@@ -119,24 +135,37 @@ function judge(tx: ParsedTx, ctx: DetectorContext, treasury: WatchedTreasury, mi
     return findings;
 }
 
-/** Net raw outflow per mint (`SOL` for native): what left minus what came back in the same transaction. */
-function outflowsFrom(tx: ParsedTx, treasury: string): Map<string, Outflow> {
+/**
+ * Net raw outflow per mint (`SOL` for native): what left minus what came back in the same transaction. A token
+ * transfer's `fromUserAccount` is its signer, so one a delegate signs is matched by the treasury's token account.
+ */
+function outflowsFrom(tx: ParsedTx, treasury: WatchedTreasury): Map<string, Outflow> {
+    const { address, tokenAccounts } = treasury;
     const outflows = new Map<string, Outflow>();
     const add = (mint: string, amount: bigint | null, decimals: number, recipient: string | null) => {
-        if (amount === null || amount === 0n) return;
-        const entry = outflows.get(mint) ?? { amount: 0n, decimals, recipients: new Set<string>() };
+        if (amount === null || amount === 0n) return undefined;
+        const entry = outflows.get(mint) ?? { amount: 0n, decimals, recipients: new Set<string>(), delegates: new Map<string, string>() };
         entry.amount += amount;
         if (recipient && amount > 0n) entry.recipients.add(recipient);
         outflows.set(mint, entry);
+        return entry;
     };
     for (const t of tx.nativeTransfers) {
-        if (t.fromUserAccount === treasury && t.toUserAccount !== treasury) add(SOL, toBigInt(t.amount), 9, t.toUserAccount);
-        if (t.toUserAccount === treasury && t.fromUserAccount !== treasury) add(SOL, negate(toBigInt(t.amount)), 9, null);
+        if (t.fromUserAccount === address && t.toUserAccount !== address) add(SOL, toBigInt(t.amount), 9, t.toUserAccount);
+        if (t.toUserAccount === address && t.fromUserAccount !== address) add(SOL, negate(toBigInt(t.amount)), 9, null);
     }
     for (const t of tx.tokenTransfers) {
-        const fromTreasury = t.fromUserAccount === treasury || t.fromTokenAccount === treasury;
-        const toTreasury = t.toUserAccount === treasury || t.toTokenAccount === treasury;
-        if (fromTreasury && !toTreasury) add(t.mint, toBigInt(t.rawTokenAmount), t.decimals, t.toUserAccount ?? t.toTokenAccount);
+        const fromAccount = t.fromTokenAccount !== null && tokenAccounts.has(t.fromTokenAccount);
+        const fromTreasury = t.fromUserAccount === address || t.fromTokenAccount === address || fromAccount;
+        const toTreasury =
+            t.toUserAccount === address ||
+            t.toTokenAccount === address ||
+            (t.toTokenAccount !== null && tokenAccounts.has(t.toTokenAccount));
+        if (fromTreasury && !toTreasury) {
+            const entry = add(t.mint, toBigInt(t.rawTokenAmount), t.decimals, t.toUserAccount ?? t.toTokenAccount);
+            if (entry && fromAccount && t.fromUserAccount && t.fromUserAccount !== address)
+                entry.delegates.set(t.fromTokenAccount!, t.fromUserAccount);
+        }
         if (toTreasury && !fromTreasury) add(t.mint, negate(toBigInt(t.rawTokenAmount)), t.decimals, null);
     }
     for (const [mint, outflow] of outflows) if (outflow.amount <= 0n) outflows.delete(mint);

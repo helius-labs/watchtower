@@ -17,13 +17,15 @@ const ROUTINE_PROGRAMS = new Set(['ComputeBudget111111111111111111111111111111']
 
 export const keyAuthority: Detector = {
     id: ID,
-    description: 'Stake authority, token owner, delegate and account-owner changes signed by treasuries and watched keys',
+    description:
+        'Stake authority, token owner, delegate and account-owner changes signed by treasuries and watched keys, or made to their token accounts',
     detect(tx: ParsedTx, ctx: DetectorContext): Finding[] {
         const changes: [ParsedInstruction, CustodyKey, Change][] = [];
         for (const ix of tx.instructions) {
-            const key = signers(ix)
-                .map((s) => ctx.targets.custodyKeys.get(s))
-                .find(Boolean);
+            const key =
+                signers(ix)
+                    .map((s) => ctx.targets.custodyKeys.get(s))
+                    .find(Boolean) ?? treasuryOfTokenAccount(ix, ctx);
             const change = key ? describe(ix, key, ctx) : null;
             if (key && change) changes.push([ix, key, change]);
         }
@@ -50,6 +52,29 @@ export const keyAuthority: Detector = {
         );
     },
 };
+
+/** The treasury or vault whose token account an `approve` or `set_authority` changes, whoever signed it. */
+function treasuryOfTokenAccount(ix: ParsedInstruction, ctx: DetectorContext): CustodyKey | undefined {
+    if (ix.programId !== PROGRAMS.splToken && ix.programId !== PROGRAMS.token2022) return undefined;
+    const name = nameOf(ix);
+    const target =
+        name === 'setauthority'
+            ? account(ix, 'mint_or_account')
+            : name === 'approve' || name === 'approvechecked'
+              ? sourceOf(ix)
+              : undefined;
+    if (!target) return undefined;
+    for (const treasury of ctx.targets.treasuries.values()) {
+        if (treasury.tokenAccounts.has(target.pubkey)) {
+            return { address: treasury.address, label: treasury.label, subject: treasury.address, subjectLabel: treasury.label };
+        }
+    }
+    return undefined;
+}
+
+function sourceOf(ix: ParsedInstruction) {
+    return account(ix, 'source_account') ?? account(ix, 'source');
+}
 
 function describe(ix: ParsedInstruction, key: CustodyKey, ctx: DetectorContext): Change | null {
     const name = nameOf(ix);
@@ -110,7 +135,7 @@ function tokenChange(ix: ParsedInstruction, name: string, key: CustodyKey, ctx: 
     }
     if (name === 'approve' || name === 'approvechecked') {
         const delegate = account(ix, 'delegate')?.pubkey ?? 'unknown';
-        const source = account(ix, 'source_account')?.pubkey ?? account(ix, 'source')?.pubkey ?? 'unknown';
+        const source = sourceOf(ix)?.pubkey ?? 'unknown';
         const amount = arg(ix, 'amount');
         return {
             severity: 'high',

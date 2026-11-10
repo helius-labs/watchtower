@@ -26,14 +26,17 @@ function watchingVault() {
         windowSlots: 9_000,
         allowedDestinations: new Set(),
         discovered: true,
+        tokenAccounts: new Set([SOURCE]),
+        delegates: new Map(),
     });
     ctx.targets.seizableAccounts.set(SOURCE, { tokenAccount: SOURCE, mint: PYUSD, delegate: DELEGATE, owner: OWNER });
     return ctx;
 }
 
 describe('permanent-delegate', () => {
-    it("flags a real PYUSD seizure from a watched vault's token account, which treasury-outflow cannot see", () => {
+    it("flags a real PYUSD seizure from a watched vault's token account, once", () => {
         // Parsed Events reports the signing delegate as `fromUserAccount`, so the vault's address appears nowhere.
+        // treasury-outflow counts it by token account but leaves the alert to permanent-delegate.
         expect(seizure.tokenTransfers[0]?.fromUserAccount).toBe(DELEGATE);
         const findings = detect(seizure, watchingVault());
         expect(findings.map((f) => [f.detector, f.severity, f.title])).toEqual([
@@ -120,11 +123,11 @@ describe('permanent-delegate', () => {
             controls: [],
             permanentDelegate: DELEGATE,
         };
-        const seizable = [
-            { tokenAccount: SOURCE, mint: PYUSD, delegate: DELEGATE, owner: OWNER },
-            { tokenAccount: KEYS.buffer, mint: KEYS.mint, delegate: KEYS.attacker, owner: KEYS.nonce },
+        const tokenAccounts = [
+            { address: SOURCE, owner: OWNER, mint: PYUSD, delegate: null, permanentDelegate: DELEGATE },
+            { address: KEYS.buffer, owner: KEYS.nonce, mint: KEYS.mint, delegate: null, permanentDelegate: KEYS.attacker },
         ];
-        const targets = buildTargets(config, { programs: [], mints: [mint], multisigs: [], seizable }, undefined, 400);
+        const targets = buildTargets(config, { programs: [], mints: [mint], multisigs: [], tokenAccounts }, undefined, 400);
         expect([...targets.seizableAccounts.keys()]).toEqual([SOURCE]);
         expect(targets.privilegedKeys.get(DELEGATE)?.role).toBe('Permanent delegate of PYUSD');
         expect(scanPlans(config, targets).filter((p) => p.detectors.includes('permanent-delegate'))).toEqual([

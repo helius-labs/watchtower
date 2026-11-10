@@ -99,7 +99,13 @@ function wireIx(spec: IxSpec, instructionIndex: number, innerInstructionIndex: n
 }
 
 export function context(
-    overrides: Partial<{ privileged: string[]; mintSupply: bigint; thresholds: Record<string, number>; permanentDelegate: string }> = {},
+    overrides: Partial<{
+        privileged: string[];
+        mintSupply: bigint;
+        thresholds: Record<string, number>;
+        permanentDelegate: string;
+        treasuryTokenAccounts: string[];
+    }> = {},
 ): DetectorContext {
     const program = {
         id: KEYS.program,
@@ -138,6 +144,8 @@ export function context(
                     windowSlots: 9_000,
                     allowedDestinations: new Set<string>(),
                     discovered: false,
+                    tokenAccounts: new Set(overrides.treasuryTokenAccounts ?? []),
+                    delegates: new Map<string, string>(),
                 },
             ],
         ]),

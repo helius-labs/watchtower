@@ -69,6 +69,10 @@ export interface WatchedTreasury {
     allowedDestinations: Set<string>;
     /** Auto-discovered vault: only outflows at a holding's threshold count toward a sweep. */
     discovered: boolean;
+    /** Its token accounts. A transfer signed by a delegate names the delegate as sender, not this address. */
+    tokenAccounts: Set<string>;
+    /** Token account → the delegate approved on it at discovery. */
+    delegates: Map<string, string>;
 }
 
 /** Upgrade authority, multisig member, mint authority or admin signer of a watched subject. */

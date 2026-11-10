@@ -104,6 +104,8 @@ describe('following authority changes', () => {
         expect(changesAuthority(finding('program-deployment', 'Upgrade authority changed'))).toBe(true);
         expect(changesAuthority(finding('privileged-instruction', 'Admin control changed: update_admin', 'high'))).toBe(true);
         expect(changesAuthority(finding('multisig-change', 'Member added', 'high'))).toBe(true);
+        expect(changesAuthority(finding('key-authority', 'Token delegate approved', 'high'))).toBe(true);
+        expect(changesAuthority(finding('key-authority', 'Stake lockup changed', 'high'))).toBe(false);
         expect(changesAuthority(finding('program-deployment', 'Program upgraded', 'high'))).toBe(false);
         expect(changesAuthority(finding('multisig-change', 'Proposal approved', 'info'))).toBe(false);
     });

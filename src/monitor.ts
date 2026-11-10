@@ -411,6 +411,8 @@ export function changesAuthority(finding: Finding): boolean {
             );
         case 'privileged-instruction':
             return finding.title.includes('Admin control changed');
+        case 'key-authority':
+            return finding.title.startsWith('Token ');
         default:
             return false;
     }
