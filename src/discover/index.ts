@@ -3,7 +3,7 @@ import { address, createAddressWithSeed, getAddressDecoder, getProgramDerivedAdd
 import { PROGRAMS, SQUADS_PROGRAMS } from '../constants.js';
 import type { ParsedEventsClient } from '../helius/parsedEvents.js';
 import type { FungibleHolding, RpcClient } from '../helius/rpc.js';
-import { account, fromParsedEvents } from '../model.js';
+import { account, fromParsedEvents, normalizeName } from '../model.js';
 import { checkBuild, type BuildCheck } from './build.js';
 import { isAdminRole, namesType, PRIMITIVE_SIZE, summarizeIdl, type ConfigLayout, type IdlSummary } from './idl.js';
 import { mintControls, type MintControl } from './token2022.js';
@@ -322,9 +322,12 @@ export async function discoverAdmins(
     // Insertion order is priority: the current admins in config accounts, then recent signers, then keys from earlier runs.
     const roles = new Map<string, string>();
     const fromAccounts = new Set<string>();
+    const singleAccountRoles: [key: string, role: string][] = [];
     for (const config of configAccounts) {
+        const single = config.layout.pdas.length > 0 && !config.layout.perEntity;
         for (const field of config.layout.fields.filter((f) => f.admin)) {
             const key = config.values[field.name];
+            if (key && single) singleAccountRoles.push([key, roleName(field.name)]);
             if (!key || key === PROGRAMS.system || roles.has(key)) continue;
             roles.set(key, `${config.layout.account}.${field.name}`);
             fromAccounts.add(key);
@@ -360,7 +363,15 @@ export async function discoverAdmins(
             return { key, role, kind: multisig ? 'squads' : 'unknown-pda', multisig };
         }),
     );
-    return admins.filter((a) => !(fromAccounts.has(a.key) && a.kind === 'unknown-pda')).slice(0, MAX_ADMIN_KEYS);
+    const kept = admins.filter((a) => !(fromAccounts.has(a.key) && a.kind === 'unknown-pda'));
+    const keptKeys = new Set(kept.map((a) => a.key));
+    const heldRoles = new Set(singleAccountRoles.filter(([key]) => key === PROGRAMS.system || keptKeys.has(key)).map(([, role]) => role));
+    return kept.filter((a) => fromAccounts.has(a.key) || !heldRoles.has(roleName(a.role))).slice(0, MAX_ADMIN_KEYS);
+}
+
+/** The field or signer name of a role, without the `Account.` prefix of a key read from a config account. */
+function roleName(role: string): string {
+    return normalizeName(role.slice(role.lastIndexOf('.') + 1));
 }
 
 const VAULT_SCAN_BUDGET = 3_000;
