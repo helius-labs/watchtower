@@ -13,7 +13,7 @@ const config = {
 const report = (coverage: BackfillResult[], coverageNote?: string): ReportData => ({
     generatedAt: new Date('2026-11-03T00:00:00Z'),
     lookbackDays: 7,
-    posture: assessPosture(config, { programs: [], mints: [], multisigs: [] }, { currentSlot: 1, slotMs: 400 }),
+    posture: assessPosture(config, { programs: [], mints: [], multisigs: [], seizable: [] }, { currentSlot: 1, slotMs: 400 }),
     findings: [],
     coverage,
     ...(coverageNote ? { coverageNote } : {}),

@@ -11,11 +11,12 @@ export interface MintControl {
 const EXTENSIONS_OFFSET = 166;
 const ZERO_KEY = '11111111111111111111111111111111';
 const FROZEN_ACCOUNT_STATE = 2;
+const PERMANENT_DELEGATE = 12;
 
 /** Keyed by spl-token-2022 `ExtensionType`; each reader gets the extension's TLV value. */
 const READERS = new Map<number, (value: Uint8Array) => MintControl | null>([
     [
-        12,
+        PERMANENT_DELEGATE,
         (v) =>
             keyed(v, 0, (delegate) => ({
                 extension: 'Permanent delegate',
@@ -95,16 +96,32 @@ const READERS = new Map<number, (value: Uint8Array) => MintControl | null>([
 /** Risky extensions in Token-2022 mint data, most severe first. */
 export function mintControls(data: Uint8Array): MintControl[] {
     const controls: MintControl[] = [];
+    for (const [type, value] of extensions(data)) {
+        const control = READERS.get(type)?.(value);
+        if (control) controls.push(control);
+    }
+    return controls.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+}
+
+/** The key that can transfer or burn any holder's tokens, from Token-2022 mint data. */
+export function permanentDelegateOf(data: Uint8Array): string | null {
+    for (const [type, value] of extensions(data)) {
+        if (type !== PERMANENT_DELEGATE || value.length < 32) continue;
+        const key = getAddressDecoder().decode(value.subarray(0, 32));
+        return key === ZERO_KEY ? null : key;
+    }
+    return null;
+}
+
+function* extensions(data: Uint8Array): Generator<[type: number, value: Uint8Array]> {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     for (let offset = EXTENSIONS_OFFSET; offset + 4 <= data.length;) {
         const type = view.getUint16(offset, true);
         const length = view.getUint16(offset + 2, true);
-        if (type === 0) break;
-        const control = READERS.get(type)?.(data.subarray(offset + 4, offset + 4 + length));
-        if (control) controls.push(control);
+        if (type === 0) return;
+        yield [type, data.subarray(offset + 4, offset + 4 + length)];
         offset += 4 + length;
     }
-    return controls.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
 }
 
 /** An optional public key at `offset`; all zeros means unset. */

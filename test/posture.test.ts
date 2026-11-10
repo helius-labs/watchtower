@@ -28,7 +28,12 @@ describe('posture', () => {
     it('costs 25 per failure and 10 per warning, each with a fix', () => {
         const posture = assessPosture(
             config,
-            { programs: [program({ idl: { instructions: [], privileged: ['set_admin'] } as never })], mints: [], multisigs: [] },
+            {
+                programs: [program({ idl: { instructions: [], privileged: ['set_admin'] } as never })],
+                mints: [],
+                multisigs: [],
+                seizable: [],
+            },
             chain,
         );
         const [subject] = posture.subjects;
@@ -57,9 +62,11 @@ describe('posture', () => {
                         supply: 0n,
                         decimals: 6,
                         controls: [],
+                        permanentDelegate: null,
                     },
                 ],
                 multisigs: [],
+                seizable: [],
             },
             chain,
         );

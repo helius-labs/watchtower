@@ -56,6 +56,7 @@ Prefer the terminal? The [CLI guide](docs/cli.md) walks through `init`, `report`
 | `multisig-proposal`      | Every other proposal on a watched multisig, decoded; critical when signed with a durable nonce                            |
 | `multisig-change`        | Members, threshold, time lock and spending-limit changes                                                                  |
 | `mint-authority`         | Mint, freeze and Token-2022 authority and extension changes; large mints                                                  |
+| `permanent-delegate`     | A Token-2022 permanent delegate moving or burning tokens out of a treasury or vault, or out of a watched mint's holders   |
 | `privileged-instruction` | Admin calls, classified by what they change; risky new listings; unknown signers                                          |
 | `admin-key-behavior`     | A known admin key used unlike its history: after a long silence, a new instruction, fee payer or program, or a flash loan |
 | `treasury-outflow`       | Large or sustained outflows and multi-asset sweeps from treasuries and vaults                                             |

@@ -1,5 +1,5 @@
 import type { Config } from '../config.js';
-import type { PrivilegedKey } from '../detectors/types.js';
+import type { PrivilegedKey, SeizableAccount } from '../detectors/types.js';
 import type { BuildCheck } from '../discover/build.js';
 import type { MintState, ProgramState } from '../discover/index.js';
 import { votingMembers, type SquadsMultisig } from '../discover/squads.js';
@@ -67,6 +67,10 @@ export function assessPosture(config: Config, discovery: Discovery, chain: Chain
             const governedBy = [program.programId, ...(program.multisig ? [program.multisig.address] : [])];
             return subject('program', program.programId, configured?.name ?? short(program.programId), [
                 ...programChecks(program, configured?.privilegedInstructions ?? [], chain),
+                ...seizableChecks(
+                    discovery.seizable,
+                    program.vaults.map((v) => v.authority),
+                ),
                 ...nonceChecks(nonces, governedBy),
             ]);
         }),
@@ -309,6 +313,18 @@ function nonceChecks(nonces: NonceExposure | undefined, subjects: string[]): Che
             title: `${exposed.length} privileged key${exposed.length === 1 ? '' : 's'} control durable nonce accounts`,
             detail: `${exposed.map((k) => `${k.role} ${k.address}: ${nonces.accounts.get(k.address)!.join(', ')}`).join('; ')}. Signatures against a durable nonce never expire.`,
             fix: 'Close nonce accounts that are no longer needed by withdrawing their full balance.',
+        },
+    ];
+}
+
+function seizableChecks(seizable: SeizableAccount[], vaults: string[]): CheckResult[] {
+    const held = seizable.filter((a) => vaults.includes(a.owner));
+    if (held.length === 0) return [];
+    return [
+        {
+            status: 'info',
+            title: 'Vaults hold tokens a permanent delegate can take',
+            detail: `${held.map((a) => `${short(a.delegate)} can move or burn ${short(a.mint)} from ${short(a.owner)}`).join('; ')}. Watchtower alerts when it does.`,
         },
     ];
 }

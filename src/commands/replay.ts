@@ -179,6 +179,10 @@ const NOTHING_TO_WATCH = new Map([
     ['multisig-proposal', 'No Squads multisig is watched.'],
     ['multisig-change', 'No Squads multisig is watched.'],
     ['mint-authority', 'No mint is watched.'],
+    [
+        'permanent-delegate',
+        "No watched mint has a permanent delegate, and no treasury or vault holds a token that has one. Holdings are read from today's token accounts.",
+    ],
     ['privileged-instruction', 'No program is watched.'],
     ['admin-key-behavior', "No admin key is known. List them under the program's adminKeys when its IDL doesn't reveal them."],
     [

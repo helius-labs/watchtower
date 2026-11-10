@@ -6,6 +6,7 @@ import {
     discoverConfigAccounts,
     discoverMint,
     discoverProgram,
+    discoverSeizableAccounts,
     discoverVaults,
     loadMultisig,
     type ProgramState,
@@ -87,7 +88,12 @@ async function discoverAll(
         Promise.all(config.mints.map((m) => discoverMint(rpc, m.address))),
         Promise.all(config.multisigs.map((m) => loadMultisig(rpc, m.address))),
     ]);
-    return { programs, mints, multisigs };
+    const owners = [...config.treasuries.map((t) => t.address), ...programs.flatMap((p) => p.vaults.map((v) => v.authority))];
+    const seizable = await discoverSeizableAccounts(rpc, owners).catch((error: Error) => {
+        console.warn(`Failed to check treasury and vault tokens for permanent delegates: ${error.message}`);
+        return [];
+    });
+    return { programs, mints, multisigs, seizable };
 }
 
 async function withAuthorities(

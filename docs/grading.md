@@ -27,5 +27,6 @@ The overall score is the lowest subject score, because one weak link is enough f
 | No verified build, or deployed bytecode that is not the registered build                                  | Warning      | Publish a verified build with `solana-verify`                              |
 | A privileged key controls durable nonce accounts (found through the key's history and confirmed on-chain) | Warning      | Close accounts that are no longer needed                                   |
 | Last deployment, missing IDL                                                                              | Note         | —                                                                          |
+| Vaults hold Token-2022 tokens whose permanent delegate can take them                                      | Note         | —                                                                          |
 
 Admin keys, admin multisigs and verified builds come from [automatic discovery](discovery.md).

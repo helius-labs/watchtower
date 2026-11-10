@@ -1,4 +1,4 @@
-import { address, getBase58Decoder } from '@solana/kit';
+import { address, getAddressDecoder, getBase58Decoder } from '@solana/kit';
 import type { HeliusClient } from 'helius-sdk';
 import type { GetProgramAccountsV2Result } from 'helius-sdk/types/types';
 
@@ -153,6 +153,19 @@ export class RpcClient {
             })),
             more: result.paginationKey !== null,
         };
+    }
+
+    /** The owner's token accounts under one token program, with each account's mint. */
+    async getTokenAccounts(owner: string, tokenProgram: string): Promise<{ address: string; mint: string }[]> {
+        const { value } = await this.#helius.getTokenAccountsByOwner(
+            address(owner),
+            { programId: address(tokenProgram) },
+            { ...BASE64, dataSlice: { offset: 0, length: 32 } },
+        );
+        return value.map((a) => ({
+            address: a.pubkey,
+            mint: getAddressDecoder().decode(Buffer.from(a.account.data[0] ?? '', 'base64')),
+        }));
     }
 
     /** Balances of the mint's largest token accounts, as UI amounts. */

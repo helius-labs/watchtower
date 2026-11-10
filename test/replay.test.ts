@@ -26,6 +26,7 @@ describe('replay detector coverage', () => {
             'multisig-proposal': 'ran',
             'multisig-change': 'ran',
             'mint-authority': 'ran',
+            'permanent-delegate': 'nothing-to-watch',
             'privileged-instruction': 'ran',
             'admin-key-behavior': 'nothing-to-watch',
             'treasury-outflow': 'ran',

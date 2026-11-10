@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { mintControls } from '../src/discover/token2022.js';
+import { mintControls, permanentDelegateOf } from '../src/discover/token2022.js';
 
 const pyusd = JSON.parse(readFileSync(new URL('./fixtures/mint-pyusd.json', import.meta.url), 'utf8')) as { data: string };
 
@@ -21,5 +21,11 @@ describe('Token-2022 mint controls', () => {
         data[168] = 32;
         expect(mintControls(data)).toEqual([]);
         expect(mintControls(new Uint8Array(82))).toEqual([]);
+        expect(permanentDelegateOf(data)).toBeNull();
+        expect(permanentDelegateOf(new Uint8Array(82))).toBeNull();
+    });
+
+    it("reads a real mint's permanent delegate (PYUSD)", () => {
+        expect(permanentDelegateOf(Buffer.from(pyusd.data, 'base64'))).toBe('2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk');
     });
 });

@@ -1,7 +1,8 @@
 import type { Config } from './config.js';
 import { FALLBACK_SLOT_MS, PROGRAMS, SQUADS_PROGRAMS } from './constants.js';
 import { MINT_EXTENSION_UPDATES } from './detectors/mintAuthority.js';
-import type { WatchedMultisig, WatchedTreasury, WatchTargets } from './detectors/types.js';
+import { DELEGATE_MOVES } from './detectors/permanentDelegate.js';
+import type { SeizableAccount, WatchedMultisig, WatchedTreasury, WatchTargets } from './detectors/types.js';
 import type { MintState, ProgramState, Vault } from './discover/index.js';
 import type { SquadsMultisig } from './discover/squads.js';
 import { formatAmount, short } from './format.js';
@@ -16,6 +17,8 @@ export interface Discovery {
     mints: MintState[];
     /** Multisigs listed in config, beyond those discovered as upgrade authorities. */
     multisigs: SquadsMultisig[];
+    /** Token accounts of treasuries and discovered vaults. */
+    seizable: SeizableAccount[];
 }
 
 export interface ScanPlan {
@@ -78,6 +81,7 @@ export function buildTargets(config: Config, discovery: Discovery, state?: State
         multisigs: new Map(),
         mints: new Map(),
         treasuries: new Map(),
+        seizableAccounts: new Map(),
         privilegedKeys: new Map(),
         custodyKeys: new Map(),
         groups: new Map(),
@@ -150,10 +154,12 @@ export function buildTargets(config: Config, discovery: Discovery, state?: State
             label,
             supply: discovered?.supply ?? null,
             decimals: discovered?.decimals ?? null,
+            permanentDelegate: discovered?.permanentDelegate ?? null,
         });
         targets.groups.set(mint.address, mint.address);
         addKey(discovered?.mintAuthority ?? null, `Mint authority of ${label}`, mint.address, label);
         addKey(discovered?.freezeAuthority ?? null, `Freeze authority of ${label}`, mint.address, label);
+        addKey(discovered?.permanentDelegate ?? null, `Permanent delegate of ${label}`, mint.address, label);
     }
     for (const treasury of config.treasuries) {
         const label = treasury.label ?? short(treasury.address);
@@ -176,7 +182,22 @@ export function buildTargets(config: Config, discovery: Discovery, state?: State
         if (!targets.custodyKeys.has(key.address))
             targets.custodyKeys.set(key.address, { address: key.address, label, subject: key.address, subjectLabel: label });
     }
+    for (const account of discovery.seizable) {
+        if (targets.treasuries.has(account.owner)) targets.seizableAccounts.set(account.tokenAccount, account);
+    }
     return targets;
+}
+
+/** Each watched permanent delegate, with one subject whose tokens it can take. */
+function permanentDelegates(targets: WatchTargets): Map<string, string> {
+    const delegates = new Map<string, string>();
+    for (const mint of targets.mints.values()) {
+        if (mint.permanentDelegate && !delegates.has(mint.permanentDelegate)) delegates.set(mint.permanentDelegate, mint.address);
+    }
+    for (const account of targets.seizableAccounts.values()) {
+        if (!delegates.has(account.delegate)) delegates.set(account.delegate, account.owner);
+    }
+    return delegates;
 }
 
 /** Thresholds are in UI units, like hand-set ones. */
@@ -312,6 +333,25 @@ export function scanPlans(config: Config, targets: WatchTargets): ScanPlan[] {
             });
         });
     }
+    for (const [delegate, subject] of permanentDelegates(targets)) {
+        plans.push({
+            key: `delegate:${delegate}`,
+            label: `Permanent delegate ${short(delegate)}`,
+            address: delegate,
+            match: {
+                programs: [
+                    {
+                        programId: PROGRAMS.token2022,
+                        discriminators: [...DELEGATE_MOVES.values()].map((m) => m.discriminator),
+                        scope: 'address',
+                    },
+                ],
+            },
+            status: 'succeeded',
+            detectors: ['permanent-delegate'],
+            subject,
+        });
+    }
     for (const key of targets.custodyKeys.values()) {
         plans.push({
             key: `custody:${key.address}`,
@@ -358,6 +398,12 @@ export function subscriptions(config: Config, targets: WatchTargets): Subscripti
     }
     for (const include of chunk([...targets.treasuries.keys()], STREAM_MAX_INCLUDED_ACCOUNTS)) {
         subs.push({ label: 'treasuries', filter: { accounts: { include } } });
+    }
+    for (const include of chunk([...permanentDelegates(targets).keys()], STREAM_MAX_INCLUDED_ACCOUNTS)) {
+        subs.push({
+            label: 'delegates',
+            filter: { programs: [PROGRAMS.token2022], instructionNames: [...DELEGATE_MOVES.keys()], accounts: { include } },
+        });
     }
     const custodyNames = [...new Set(Object.values(CUSTODY_INSTRUCTIONS).flatMap((c) => c.names))];
     for (const include of chunk([...targets.custodyKeys.keys()], STREAM_MAX_INCLUDED_ACCOUNTS)) {

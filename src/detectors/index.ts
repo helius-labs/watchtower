@@ -9,6 +9,7 @@ import { multisigChange } from './multisigChange.js';
 import { multisigProposal } from './multisigProposal.js';
 import { usesDurableNonce } from './nonce.js';
 import { nonceAuthority } from './nonceAuthority.js';
+import { permanentDelegate } from './permanentDelegate.js';
 import { privilegedInstruction } from './privilegedInstruction.js';
 import { programDeployment } from './programDeployment.js';
 import { escalate } from './severity.js';
@@ -24,6 +25,7 @@ const DETECTORS: Detector[] = [
     multisigProposal,
     multisigChange,
     mintAuthority,
+    permanentDelegate,
     privilegedInstruction,
     adminKeyBehavior,
     treasuryOutflow,

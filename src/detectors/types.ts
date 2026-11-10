@@ -46,6 +46,16 @@ export interface WatchedMint {
     label: string;
     supply: bigint | null;
     decimals: number | null;
+    permanentDelegate: string | null;
+}
+
+/** A Token-2022 account of a watched treasury or vault whose mint's permanent delegate can move or burn its tokens. */
+export interface SeizableAccount {
+    tokenAccount: string;
+    mint: string;
+    delegate: string;
+    /** The treasury or vault address that owns the token account. */
+    owner: string;
 }
 
 export interface WatchedTreasury {
@@ -83,6 +93,8 @@ export interface WatchTargets {
     multisigs: Map<string, WatchedMultisig>;
     mints: Map<string, WatchedMint>;
     treasuries: Map<string, WatchedTreasury>;
+    /** Keyed by token account. */
+    seizableAccounts: Map<string, SeizableAccount>;
     privilegedKeys: Map<string, PrivilegedKey>;
     custodyKeys: Map<string, CustodyKey>;
     /** Subject → its protocol group: a program ID, or the subject itself. */

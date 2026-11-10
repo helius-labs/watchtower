@@ -6,7 +6,8 @@ import type { FungibleHolding, RpcClient } from '../helius/rpc.js';
 import { account, fromParsedEvents, normalizeName } from '../model.js';
 import { checkBuild, type BuildCheck } from './build.js';
 import { isAdminRole, namesType, PRIMITIVE_SIZE, summarizeIdl, type ConfigLayout, type IdlSummary } from './idl.js';
-import { mintControls, type MintControl } from './token2022.js';
+import type { SeizableAccount } from '../detectors/types.js';
+import { mintControls, permanentDelegateOf, type MintControl } from './token2022.js';
 import { decodeMultisig, findVaultIndex, type SquadsMultisig } from './squads.js';
 
 type AuthorityKind = 'immutable' | 'wallet' | 'squads' | 'unknown-pda';
@@ -58,6 +59,7 @@ export interface MintState {
     decimals: number;
     /** Empty for SPL Token mints. */
     controls: MintControl[];
+    permanentDelegate: string | null;
 }
 
 const UPGRADEABLE_PROGRAM_TAG = 2;
@@ -424,7 +426,33 @@ export async function discoverMint(rpc: RpcClient, mint: string): Promise<MintSt
         decimals: info.data[44] ?? 0,
         freezeAuthority: readU32(info.data, 46) === 1 ? readAddress(info.data, 50) : null,
         controls: info.owner === PROGRAMS.token2022 ? mintControls(info.data) : [],
+        permanentDelegate: info.owner === PROGRAMS.token2022 ? permanentDelegateOf(info.data) : null,
     };
+}
+
+const MAX_ACCOUNTS_PER_CALL = 100;
+
+/** The owners' Token-2022 accounts whose mint has a permanent delegate other than the owner. */
+export async function discoverSeizableAccounts(rpc: RpcClient, owners: string[]): Promise<SeizableAccount[]> {
+    const accounts = (
+        await Promise.all(
+            owners.map(async (owner) => (await rpc.getTokenAccounts(owner, PROGRAMS.token2022)).map((a) => ({ ...a, owner }))),
+        )
+    ).flat();
+    const mints = [...new Set(accounts.map((a) => a.mint))];
+    const delegates = new Map<string, string>();
+    for (let i = 0; i < mints.length; i += MAX_ACCOUNTS_PER_CALL) {
+        const group = mints.slice(i, i + MAX_ACCOUNTS_PER_CALL);
+        const { data } = await rpc.getMultipleAccountsData(group);
+        group.forEach((mint, j) => {
+            const delegate = data[j] ? permanentDelegateOf(data[j]) : null;
+            if (delegate) delegates.set(mint, delegate);
+        });
+    }
+    return accounts.flatMap((a) => {
+        const delegate = delegates.get(a.mint);
+        return delegate && delegate !== a.owner ? [{ tokenAccount: a.address, mint: a.mint, delegate, owner: a.owner }] : [];
+    });
 }
 
 /** System-owned nonce accounts: 80 bytes, version u32, state u32, then the authority. */

@@ -99,7 +99,7 @@ function wireIx(spec: IxSpec, instructionIndex: number, innerInstructionIndex: n
 }
 
 export function context(
-    overrides: Partial<{ privileged: string[]; mintSupply: bigint; thresholds: Record<string, number> }> = {},
+    overrides: Partial<{ privileged: string[]; mintSupply: bigint; thresholds: Record<string, number>; permanentDelegate: string }> = {},
 ): DetectorContext {
     const program = {
         id: KEYS.program,
@@ -115,7 +115,18 @@ export function context(
         multisigs: new Map([
             [KEYS.multisig, { address: KEYS.multisig, label: 'Upgrade multisig', version: 4, threshold: 3, timeLockSeconds: 86_400 }],
         ]),
-        mints: new Map([[KEYS.mint, { address: KEYS.mint, label: 'TEST', supply: overrides.mintSupply ?? 1_000_000_000n, decimals: 6 }]]),
+        mints: new Map([
+            [
+                KEYS.mint,
+                {
+                    address: KEYS.mint,
+                    label: 'TEST',
+                    supply: overrides.mintSupply ?? 1_000_000_000n,
+                    decimals: 6,
+                    permanentDelegate: overrides.permanentDelegate ?? null,
+                },
+            ],
+        ]),
         treasuries: new Map([
             [
                 KEYS.treasury,
@@ -130,6 +141,7 @@ export function context(
                 },
             ],
         ]),
+        seizableAccounts: new Map(),
         privilegedKeys: new Map([
             [
                 KEYS.member,
