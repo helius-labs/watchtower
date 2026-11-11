@@ -93,7 +93,15 @@ export async function replayCommand(options: ReplayOptions): Promise<void> {
         let scanned = 0;
         let planCredits = 0;
         const scan = runtime.events.scanAll(
-            { address: plan.address, match: plan.match, status: plan.status, sortOrder: 'asc', limit: 100, ...window },
+            {
+                address: plan.address,
+                match: plan.match,
+                status: plan.status,
+                ...(plan.tokenAccounts ? { tokenAccounts: plan.tokenAccounts } : {}),
+                sortOrder: 'asc',
+                limit: 100,
+                ...window,
+            },
             budget,
             (progress) => {
                 ended = progress.windowEnded;

@@ -142,6 +142,7 @@ function scanRequest(config: Config, plan: ScanPlan, state: StateStore, untilSlo
         address: plan.address,
         match: plan.match,
         status: plan.status,
+        ...(plan.tokenAccounts ? { tokenAccounts: plan.tokenAccounts } : {}),
         sortOrder,
         limit: 100,
         minContextSlot: untilSlot,

@@ -79,7 +79,7 @@ describe('treasury-outflow: delegate-signed transfers', () => {
         ]);
     });
 
-    it('watches token accounts that have a delegate: scans them, streams them and notes them in posture', () => {
+    it("scans every treasury token account through the owner's plan, and streams delegated ones", () => {
         const config = {
             ...parseConfig({ programs: [{ id: KEYS.program }], treasuries: [{ address: KEYS.treasury, label: 'Ops' }] }),
             apiKey: 'k',
@@ -95,20 +95,8 @@ describe('treasury-outflow: delegate-signed transfers', () => {
             tokenAccounts: new Set([TOKEN_ACCOUNT, KEYS.buffer]),
             delegates: new Map([[TOKEN_ACCOUNT, DELEGATE]]),
         });
-        expect(scanPlans(config, targets).find((p) => p.key === `delegated:${TOKEN_ACCOUNT}`)).toEqual({
-            key: `delegated:${TOKEN_ACCOUNT}`,
-            label: 'Ops token account Trea…1111, delegate De1e…1111',
-            address: TOKEN_ACCOUNT,
-            match: {
-                programs: [
-                    { programId: PROGRAMS.splToken, discriminators: ['0x03', '0x0c'], scope: 'address' },
-                    { programId: PROGRAMS.token2022, discriminators: ['0x03', '0x0c', '0x1a01'], scope: 'address' },
-                ],
-            },
-            status: 'succeeded',
-            detectors: ['treasury-outflow'],
-            subject: KEYS.treasury,
-        });
+        const treasuryPlans = scanPlans(config, targets).filter((p) => p.detectors.includes('treasury-outflow'));
+        expect(treasuryPlans.map((p) => [p.address, p.tokenAccounts])).toEqual([[KEYS.treasury, 'balanceChanged']]);
         expect(subscriptions(config, targets).find((s) => s.label === 'treasuries')?.filter.accounts?.include).toEqual([
             KEYS.treasury,
             TOKEN_ACCOUNT,

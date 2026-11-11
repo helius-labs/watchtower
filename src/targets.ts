@@ -27,6 +27,8 @@ export interface ScanPlan {
     address: string;
     match: ScanMatch;
     status: NonNullable<ScanRequest['status']>;
+    /** Also scan transactions that touch only a token account `address` owns, such as one a delegate signs. */
+    tokenAccounts?: NonNullable<ScanRequest['tokenAccounts']>;
     /** Detectors whose findings about `subject` this plan is responsible for. */
     detectors: string[];
     subject: string;
@@ -43,12 +45,6 @@ const SCAN_MAX_MINTS = 20;
 
 /** The native-SOL pseudo-mint the scan endpoint matches on lamport changes (wrapped SOL ends in …112). */
 const NATIVE_SOL_SCAN_MINT = 'So11111111111111111111111111111111111111111';
-
-/** Token tags a delegate can move tokens with: transfer, transfer_checked, and Token-2022's transfer_checked_with_fee. */
-const DELEGATE_TRANSFER_DISCRIMINATORS = {
-    [PROGRAMS.splToken]: ['0x03', '0x0c'],
-    [PROGRAMS.token2022]: ['0x03', '0x0c', '0x1a01'],
-};
 
 /** SPL Token and Token-2022 tags: set_authority, mint_to, freeze_account, mint_to_checked. */
 const TOKEN_DISCRIMINATORS = ['0x06', '0x07', '0x0a', '0x0e'];
@@ -348,29 +344,12 @@ export function scanPlans(config: Config, targets: WatchTargets): ScanPlan[] {
                 address: treasury.address,
                 match,
                 status: 'succeeded',
+                tokenAccounts: 'balanceChanged',
                 detectors: ['treasury-outflow'],
                 subject: treasury.address,
                 ...(treasury.discovered ? { skipFirstScan: true as const } : {}),
             });
         });
-        for (const [tokenAccount, delegate] of treasury.delegates) {
-            plans.push({
-                key: `delegated:${tokenAccount}`,
-                label: `${treasury.label} token account ${short(tokenAccount)}, delegate ${short(delegate)}`,
-                address: tokenAccount,
-                match: {
-                    programs: Object.entries(DELEGATE_TRANSFER_DISCRIMINATORS).map(([programId, discriminators]) => ({
-                        programId,
-                        discriminators,
-                        scope: 'address' as const,
-                    })),
-                },
-                status: 'succeeded',
-                detectors: ['treasury-outflow'],
-                subject: treasury.address,
-                ...(treasury.discovered ? { skipFirstScan: true as const } : {}),
-            });
-        }
     }
     for (const [delegate, subject] of permanentDelegates(targets)) {
         plans.push({
